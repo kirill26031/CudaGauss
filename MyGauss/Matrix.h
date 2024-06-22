@@ -53,6 +53,17 @@ public:
 	int const& getWidth() const {
 		return this->width;
 	}
+
+	void swapRows(int row_a, int row_b) {
+		if (row_a >= 0 && row_b >= 0 && row_a < height && row_b < height && row_a != row_b) {
+			double* temp = data[row_a];
+			data[row_a] = data[row_b];
+			data[row_b] = temp;
+		}
+		else {
+			std::cerr << "swapRows " << row_a << ", " << row_b << std::endl;
+		}
+	}
 };
 
 std::ostream& operator<< (std::ostream& stream, const Matrix& matrix);

@@ -82,11 +82,11 @@
   <ItemGroup>
     <ClInclude Include="book.h" />
     <ClInclude Include="Matrix.h" />
-    <ClInclude Include="SerialSolver.h" />
+    <ClInclude Include="SimpleGauss.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Matrix.cpp" />
-    <ClCompile Include="SerialSolver.cpp" />
+    <ClCompile Include="SimpleGauss.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -2,7 +2,12 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "book.h"
+
+#ifndef __MATRIX
+#define __MATRIX
 #include "Matrix.h"
+#endif
+#include "SimpleGauss.h"
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
@@ -34,17 +39,22 @@ int main()
     //    return 1;
     //}
 
-    Matrix matrix(5, 10);
-    matrix[0][0] = 19.8;
-    std::ofstream myfile;
-    myfile.open("example.txt");
-    myfile << matrix;
-    myfile.close();
+    //Matrix matrix(5, 10);
+    //matrix[0][0] = 19.8;
+    //std::ofstream myfile;
+    //myfile.open("example.txt");
+    //myfile << matrix;
+    //myfile.close();
 
     std::cout << "\n\n";
 
     Matrix* storedMatrix = readFromFile("example.txt");
     std::cout << *storedMatrix;
+    std::cout << "\n\n";
+    SimpleGauss sg(*storedMatrix);
+    sg.toRowEchelonForm();
+    std::cout << *storedMatrix;
+
 
     return 0;
 }
