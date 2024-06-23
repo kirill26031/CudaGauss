@@ -1,5 +1,6 @@
 ﻿#include <cuda.h>
 #include "cuda_runtime.h"
+#include "cuda_runtime_api.h"
 #include "device_launch_parameters.h"
 #include "book.h"
 
@@ -8,6 +9,8 @@
 #include "Matrix.h"
 #endif
 #include "SimpleGauss.h"
+
+void parallelGauss(Matrix& matrix);
 
 __global__ void locateMaxElement(double* data, const int height, const int width, bool* used_columns, bool* used_rows,
     double* max_values, int* max_rows, int* max_columns) {
@@ -41,7 +44,7 @@ __global__ void locateMaxElement(double* data, const int height, const int width
     max_columns_per_block[t_in_b] = max_column;
     __syncthreads();
     // Reduction
-    int i = blockDim.x / 2;
+    int i = gridDim.x * gridDim.y / 2;
     while (i != 0) {
         if (t_in_b < i)
             if (max_values_per_block[t_in_b] < max_values_per_block[t_in_b + i]) {
@@ -55,7 +58,8 @@ __global__ void locateMaxElement(double* data, const int height, const int width
     if (t_in_b == 0) {
         max_rows[b_in_g] = max_rows_per_block[0];
         max_columns[b_in_g] = max_columns_per_block[0];
-        max_values[b_in_g] = data[max_columns[b_in_g] * width + max_rows[b_in_g]]; // return without abs
+        max_values[b_in_g] = max_values_per_block[0];
+            //data[max_columns[b_in_g] * width + max_rows[b_in_g]]; // return without abs
     }
 }
 
@@ -64,7 +68,7 @@ void parallelGauss(Matrix& matrix) {
     dim3 threads(16, 16);
     const int blocks_amount = blocks.x * blocks.y;
 
-    int pivot_value;
+    double pivot_value;
     int pivot_row;
     int pivot_column;
     int iteration = 0;
@@ -82,27 +86,27 @@ void parallelGauss(Matrix& matrix) {
     int* dev_max_rows = nullptr;
     int* dev_max_columns = nullptr;
 
-    cudaSetDevice(0);
+    HANDLE_ERROR(cudaSetDevice(0));
 
-    cudaMalloc((void**)&dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double));
-    cudaMalloc((void**)&dev_used_columns, matrix.getWidth() * sizeof(bool));
-    cudaMalloc((void**)&dev_used_rows, matrix.getHeight() * sizeof(bool));
-    cudaMalloc((void**)&dev_max_values, blocks_amount * sizeof(double));
-    cudaMalloc((void**)&dev_max_rows, blocks_amount * sizeof(int));
-    cudaMalloc((void**)&dev_max_columns, blocks_amount * sizeof(int));
+    HANDLE_ERROR(cudaMalloc((void**)&dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc((void**)&dev_used_columns, matrix.getWidth() * sizeof(bool)));
+    HANDLE_ERROR(cudaMalloc((void**)&dev_used_rows, matrix.getHeight() * sizeof(bool)));
+    HANDLE_ERROR(cudaMalloc((void**)&dev_max_values, blocks_amount * sizeof(double)));
+    HANDLE_ERROR(cudaMalloc((void**)&dev_max_rows, blocks_amount * sizeof(int)));
+    HANDLE_ERROR(cudaMalloc((void**)&dev_max_columns, blocks_amount * sizeof(int)));
 
-    cudaMemcpy(dev_matrix, matrix[0], matrix.getHeight() * matrix.getWidth() * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_used_columns, used_columns, matrix.getWidth() * sizeof(bool), cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_used_rows, used_rows, matrix.getHeight() * sizeof(bool), cudaMemcpyHostToDevice);
+    HANDLE_ERROR(cudaMemcpy(dev_matrix, matrix[0], matrix.getHeight() * matrix.getWidth() * sizeof(double), cudaMemcpyHostToDevice));
+    HANDLE_ERROR(cudaMemcpy(dev_used_columns, used_columns, matrix.getWidth() * sizeof(bool), cudaMemcpyHostToDevice));
+    HANDLE_ERROR(cudaMemcpy(dev_used_rows, used_rows, matrix.getHeight() * sizeof(bool), cudaMemcpyHostToDevice));
 
     const int max_values_rows_columns_array_size = blocks_amount * (sizeof(double) + 2 * sizeof(int));
 
     while (iteration < std::min(matrix.getHeight(), matrix.getWidth()) - 1) {
-        locateMaxElement <<<blocks, threads, max_values_rows_columns_array_size >>> (dev_matrix, matrix.getHeight(), matrix.getWidth(), dev_used_columns, dev_used_rows,
+        locateMaxElement<<<blocks, threads, max_values_rows_columns_array_size>>>(dev_matrix, matrix.getHeight(), matrix.getWidth(), dev_used_columns, dev_used_rows,
             dev_max_values, dev_max_rows, dev_max_columns);
-        cudaMemcpy(max_values, dev_max_values, blocks_amount * sizeof(double), cudaMemcpyDeviceToHost);
-        cudaMemcpy(max_rows, dev_max_rows, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost);
-        cudaMemcpy(max_columns, dev_max_columns, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost);
+        HANDLE_ERROR(cudaMemcpy(max_values, dev_max_values, blocks_amount * sizeof(double), cudaMemcpyDeviceToHost));
+        HANDLE_ERROR(cudaMemcpy(max_rows, dev_max_rows, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost));
+        HANDLE_ERROR(cudaMemcpy(max_columns, dev_max_columns, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost));
 
         //Find largest element among blocks
         double max_elem = std::abs(max_values[0]);
@@ -125,8 +129,8 @@ void parallelGauss(Matrix& matrix) {
 
         std::cout << "\n" << pivot_value;
 
-        cudaMemcpy(dev_used_columns + pivot_column, used_columns + pivot_column, sizeof(bool), cudaMemcpyHostToDevice);
-        cudaMemcpy(dev_used_rows + pivot_row, used_rows + pivot_row, sizeof(bool), cudaMemcpyHostToDevice);
+        HANDLE_ERROR(cudaMemcpy(dev_used_columns + pivot_column, used_columns + pivot_column, sizeof(bool), cudaMemcpyHostToDevice));
+        HANDLE_ERROR(cudaMemcpy(dev_used_rows + pivot_row, used_rows + pivot_row, sizeof(bool), cudaMemcpyHostToDevice));
     }
     
 }
