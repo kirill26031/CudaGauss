@@ -58,8 +58,8 @@ void SimpleGauss::byMaxLeadColumn()
 				}
 			}
 		}
-		std::cout << "\n-(" << pivotRow << "," << pivotColumn << " ) = " << maxElement << " -----\n";
-		std::cout << matrix << std::endl;
+		//std::cout << "\n-(" << pivotRow << "," << pivotColumn << " ) = " << maxElement << " -----\n";
+		//std::cout << matrix << std::endl;
 
 		usedRows->insert(pivotRow);
 		usedColumns->insert(pivotColumn);

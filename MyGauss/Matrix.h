@@ -8,19 +8,18 @@ class Matrix
 private: 
 	int width;
 	int height;
-	double** data;
+	double* data;
 
 public:
-	Matrix(int height, int width, double** data = nullptr) : width(width), height(height) {
-		this->data = new double* [height];
+	Matrix(int height, int width, double* data = nullptr) : width(width), height(height) {
+		this->data = new double[height * width];
 		for (int i = 0; i < height; ++i) {
-			this->data[i] = new double[width];
 			for (int j = 0; j < width; ++j) {
 				if (data == nullptr) {
-					this->data[i][j] = 0;
+					this->data[toIndex(i, j)] = 0;
 				}
 				else {
-					this->data[i][j] = data[i][j];
+					this->data[toIndex(i, j)] = data[toIndex(i, j)];
 				}
 			}
 		}
@@ -28,11 +27,10 @@ public:
 
 	Matrix(const Matrix& matrix) : height(matrix.getHeight()), width(matrix.getWidth()), data(matrix.data) {}
 
-	Matrix(const std::vector<std::vector<double>>& vectorData) : height(vectorData.size()), width(vectorData.size() > 0 ? vectorData[0].size() : 0), data(new double* [height]) {
+	Matrix(const std::vector<std::vector<double>>& vectorData) : height(vectorData.size()), width(vectorData.size() > 0 ? vectorData[0].size() : 0), data(new double[height * width]) {
 		for (int i = 0; i < height; ++i) {
-			data[i] = new double[width];
 			for (int j = 0; j < width; ++j) {
-				data[i][j] = vectorData[i][j];
+				data[toIndex(i, j)] = vectorData[i][j];
 			}
 		}
 	}
@@ -43,7 +41,7 @@ public:
 
 	// Returns row
 	double * operator[](int i) const {
-		return this->data[i];
+		return this->data + i * width;
 	}
 
 	int const& getHeight() const {
@@ -56,17 +54,24 @@ public:
 
 	void swapRows(int row_a, int row_b) {
 		if (row_a >= 0 && row_b >= 0 && row_a < height && row_b < height && row_a != row_b) {
-			double* temp = data[row_a];
-			data[row_a] = data[row_b];
-			data[row_b] = temp;
+			double temp;
+			for (int j = 0; j < width; ++j) {
+				temp = data[toIndex(row_a, j)];
+				data[toIndex(row_a, j)] = data[toIndex(row_b, j)];
+				data[toIndex(row_b, j)] = temp;
+			}
+			
 		}
 		else {
 			std::cerr << "swapRows " << row_a << ", " << row_b << std::endl;
 		}
+	}
+
+	int toIndex(int i, int j) {
+		return i * width + j;
 	}
 };
 
 std::ostream& operator<< (std::ostream& stream, const Matrix& matrix);
 
 Matrix* readFromFile(const std::string& path);
-

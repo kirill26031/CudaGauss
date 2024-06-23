@@ -9,7 +9,7 @@
 #endif
 #include "SimpleGauss.h"
 
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
+//cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
 //__global__ void addKernel(int *c, const int *a, const int *b)
 //{
@@ -53,10 +53,20 @@ int main()
     std::cout << "\n\n";
     SimpleGauss sg(*storedMatrix);
     sg.byMaxLeadColumn();
-    //std::cout << *storedMatrix;
-
+    std::cout << *storedMatrix;
+    //parallelGauss(*storedMatrix);
 
     return 0;
+}
+
+void parallelGauss(Matrix& matrix) {
+    double* dev_matrix = nullptr;
+    int* dev_used_columns = nullptr;
+    int* dev_used_rows = nullptr;
+
+    cudaMalloc((void**)&dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double));
+    cudaMalloc((void**)&dev_used_columns, matrix.getWidth() * sizeof(bool));
+    cudaMalloc((void**)&dev_used_rows, matrix.getHeight() * sizeof(bool));
 }
 
  // Helper function for using CUDA to add vectors in parallel.
