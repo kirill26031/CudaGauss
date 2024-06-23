@@ -1,4 +1,4 @@
-﻿
+﻿#include <cuda.h>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "book.h"
@@ -9,101 +9,139 @@
 #endif
 #include "SimpleGauss.h"
 
-//cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
+__global__ void locateMaxElement(double* data, const int height, const int width, bool* used_columns, bool* used_rows,
+    double* max_values, int* max_rows, int* max_columns) {
+    int row_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int column_id = blockDim.y * blockIdx.y + threadIdx.y;
+    int b_in_g = gridDim.x * blockIdx.y + blockIdx.x;
+    int t_in_b = blockDim.x * threadIdx.y + threadIdx.x;
 
-//__global__ void addKernel(int *c, const int *a, const int *b)
-//{
-//    int i = threadIdx.x;
-//    c[i] = a[i] + b[i];
-//}
+    extern __shared__ char* max_per_block[];
+    double* max_values_per_block = (double*)max_per_block;
+    int* max_columns_per_block = (int*)(max_per_block + gridDim.x * gridDim.y * sizeof(double));
+    int* max_rows_per_block = (int*)(max_per_block + gridDim.x * gridDim.y * (sizeof(double) + sizeof(int)));
 
-int main()
-{
-    //const int arraySize = 5;
-    //const int a[arraySize] = { 1, 2, 3, 4, 5 };
-    //const int b[arraySize] = { 10, 20, 30, 40, 50 };
-    //int c[arraySize] = { 0 };
-    //// Add vectors in parallel.
-    //cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
-    //if (cudaStatus != cudaSuccess) {
-    //    fprintf(stderr, "addWithCuda failed!");
-    //    return 1;
-    //}
-    //printf("{1,2,3,4,5} + {10,20,30,40,50} = {%d,%d,%d,%d,%d}\n",
-    //    c[0], c[1], c[2], c[3], c[4]);
-    //// cudaDeviceReset must be called before exiting in order for profiling and
-    //// tracing tools such as Nsight and Visual Profiler to show complete traces.
-    //cudaStatus = cudaDeviceReset();
-    //if (cudaStatus != cudaSuccess) {
-    //    fprintf(stderr, "cudaDeviceReset failed!");
-    //    return 1;
-    //}
+    double max_value = fabs(data[column_id * width + row_id]);
+    int max_row = row_id;
+    int max_column = column_id;
+    double temp;
+    while (row_id < width && column_id < height) {
+        temp = fabs(data[column_id * width + row_id]);
+        if (temp > max_value) {
+            max_value = temp;
+            max_row = row_id;
+            max_column = column_id;
+        }
 
-    //Matrix matrix(5, 10);
-    //matrix[0][0] = 19.8;
-    //std::ofstream myfile;
-    //myfile.open("example.txt");
-    //myfile << matrix;
-    //myfile.close();
-
-    std::cout << "\n\n";
-
-    Matrix* storedMatrix = readFromFile("matrices/4x4.txt");
-    std::cout << *storedMatrix;
-    std::cout << "\n\n";
-    SimpleGauss sg(*storedMatrix);
-    sg.byMaxLeadColumn();
-    std::cout << *storedMatrix;
-    //parallelGauss(*storedMatrix);
-
-    return 0;
+        row_id += blockDim.x;
+        column_id += blockDim.y;
+    }
+    max_values_per_block[t_in_b] = max_value;
+    max_rows_per_block[t_in_b] = max_row;
+    max_columns_per_block[t_in_b] = max_column;
+    __syncthreads();
+    // Reduction
+    int i = blockDim.x / 2;
+    while (i != 0) {
+        if (t_in_b < i)
+            if (max_values_per_block[t_in_b] < max_values_per_block[t_in_b + i]) {
+                max_values_per_block[t_in_b] = max_values_per_block[t_in_b + i];
+                max_rows_per_block[t_in_b] = max_rows_per_block[t_in_b + i];
+                max_columns_per_block[t_in_b] = max_columns_per_block[t_in_b + i];
+            }
+        __syncthreads();
+        i /= 2;
+    }
+    if (t_in_b == 0) {
+        max_rows[b_in_g] = max_rows_per_block[0];
+        max_columns[b_in_g] = max_columns_per_block[0];
+        max_values[b_in_g] = data[max_columns[b_in_g] * width + max_rows[b_in_g]]; // return without abs
+    }
 }
 
 void parallelGauss(Matrix& matrix) {
+    dim3 blocks(matrix.getWidth() / 16, matrix.getHeight() / 16);
+    dim3 threads(16, 16);
+    const int blocks_amount = blocks.x * blocks.y;
+
+    int pivot_value;
+    int pivot_row;
+    int pivot_column;
+    int iteration = 0;
+    
+    bool* used_columns = new bool[matrix.getWidth()]();
+    bool* used_rows = new bool[matrix.getHeight()]();
+    double* max_values = new double[blocks_amount];
+    int* max_rows = new int[blocks_amount];
+    int* max_columns = new int[blocks_amount];
+
     double* dev_matrix = nullptr;
-    int* dev_used_columns = nullptr;
-    int* dev_used_rows = nullptr;
+    bool* dev_used_columns = nullptr;
+    bool* dev_used_rows = nullptr;
+    double* dev_max_values = nullptr;
+    int* dev_max_rows = nullptr;
+    int* dev_max_columns = nullptr;
+
+    cudaSetDevice(0);
 
     cudaMalloc((void**)&dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double));
     cudaMalloc((void**)&dev_used_columns, matrix.getWidth() * sizeof(bool));
     cudaMalloc((void**)&dev_used_rows, matrix.getHeight() * sizeof(bool));
+    cudaMalloc((void**)&dev_max_values, blocks_amount * sizeof(double));
+    cudaMalloc((void**)&dev_max_rows, blocks_amount * sizeof(int));
+    cudaMalloc((void**)&dev_max_columns, blocks_amount * sizeof(int));
+
+    cudaMemcpy(dev_matrix, matrix[0], matrix.getHeight() * matrix.getWidth() * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_used_columns, used_columns, matrix.getWidth() * sizeof(bool), cudaMemcpyHostToDevice);
+    cudaMemcpy(dev_used_rows, used_rows, matrix.getHeight() * sizeof(bool), cudaMemcpyHostToDevice);
+
+    const int max_values_rows_columns_array_size = blocks_amount * (sizeof(double) + 2 * sizeof(int));
+
+    while (iteration < std::min(matrix.getHeight(), matrix.getWidth()) - 1) {
+        locateMaxElement <<<blocks, threads, max_values_rows_columns_array_size >>> (dev_matrix, matrix.getHeight(), matrix.getWidth(), dev_used_columns, dev_used_rows,
+            dev_max_values, dev_max_rows, dev_max_columns);
+        cudaMemcpy(max_values, dev_max_values, blocks_amount * sizeof(double), cudaMemcpyDeviceToHost);
+        cudaMemcpy(max_rows, dev_max_rows, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(max_columns, dev_max_columns, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost);
+
+        //Find largest element among blocks
+        double max_elem = std::abs(max_values[0]);
+        int max_block = 0;
+        for (int b_i = 1; b_i < blocks_amount; ++b_i) {
+            if (std::abs(max_values[b_i]) > max_elem) {
+                max_elem = std::abs(max_values[b_i]);
+                max_block = b_i;
+            }
+        }
+        pivot_value = max_values[max_block];
+        pivot_row = max_rows[max_block];
+        pivot_column = max_columns[max_block];
+        used_columns[pivot_column] = true;
+        used_rows[pivot_row] = true;
+        iteration++;
+        if (pivot_value == 0) {
+            break;
+        }
+
+        std::cout << "\n" << pivot_value;
+
+        cudaMemcpy(dev_used_columns + pivot_column, used_columns + pivot_column, sizeof(bool), cudaMemcpyHostToDevice);
+        cudaMemcpy(dev_used_rows + pivot_row, used_rows + pivot_row, sizeof(bool), cudaMemcpyHostToDevice);
+    }
+    
 }
 
- // Helper function for using CUDA to add vectors in parallel.
-//cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
-//{
-//    int *dev_a = 0;
-//    int *dev_b = 0;
-//    int *dev_c = 0;
-//    cudaError_t cudaStatus;
-//
-//    // Choose which GPU to run on, change this on a multi-GPU system.
-//    HANDLE_ERROR(cudaSetDevice(0));
-//
-//    // Allocate GPU buffers for three vectors (two input, one output)    .
-//    cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
-//
-//    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
-//
-//    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
-//
-//    // Copy input vectors from host memory to GPU buffers.
-//    cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
-//
-//    cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
-//
-//    // Launch a kernel on the GPU with one thread for each element.
-//    addKernel<<<1, size>>>(dev_c, dev_a, dev_b);
-//
-//    // Check for any errors launching the kernel
-//    cudaStatus = cudaGetLastError();
-//    
-//    // cudaDeviceSynchronize waits for the kernel to finish, and returns
-//    // any errors encountered during the launch.
-//    cudaStatus = cudaDeviceSynchronize();
-//
-//    // Copy output vector from GPU buffer to host memory.
-//    cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
-//    
-//    return cudaStatus;
-//}
+
+int main()
+{
+
+    Matrix* storedMatrix = readFromFile("matrices/1024x1024.txt");
+    //std::cout << *storedMatrix;
+    //std::cout << "\n\n";
+    //SimpleGauss sg(*storedMatrix);
+    //sg.byMaxLeadColumn();
+    //std::cout << *storedMatrix;
+    parallelGauss(*storedMatrix);
+
+    return 0;
+}

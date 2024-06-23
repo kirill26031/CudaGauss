@@ -3,6 +3,7 @@
 #include <fstream>
 #include <vector>
 #include <iostream>
+#include <random>
 class Matrix
 {
 private: 
@@ -11,12 +12,22 @@ private:
 	double* data;
 
 public:
-	Matrix(int height, int width, double* data = nullptr) : width(width), height(height) {
+	Matrix(int height, int width, bool randomize = false, double* data = nullptr) : width(width), height(height) {
+		double lower_bound = -10000;
+		double upper_bound = 10000;
+		std::uniform_real_distribution<double> unif(lower_bound, upper_bound);
+		std::default_random_engine re;
+
 		this->data = new double[height * width];
 		for (int i = 0; i < height; ++i) {
 			for (int j = 0; j < width; ++j) {
 				if (data == nullptr) {
-					this->data[toIndex(i, j)] = 0;
+					if (randomize) {
+						this->data[toIndex(i, j)] = unif(re);
+					}
+					else {
+						this->data[toIndex(i, j)] = 0;
+					}
 				}
 				else {
 					this->data[toIndex(i, j)] = data[toIndex(i, j)];
