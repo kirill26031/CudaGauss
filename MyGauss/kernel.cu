@@ -19,10 +19,10 @@ __global__ void locateMaxElement(double* data, int height, int width, bool* used
     int b_in_g = gridDim.x * blockIdx.y + blockIdx.x;
     int t_in_b = blockDim.x * threadIdx.y + threadIdx.x;
 
-    extern __shared__ char* max_per_block[];
+    extern __shared__ char* max_per_block[4096];
     double* max_values_per_block = (double*)max_per_block;
-    int* max_columns_per_block = (int*)(max_per_block + gridDim.x * gridDim.y * sizeof(double));
-    int* max_rows_per_block = (int*)(max_per_block + gridDim.x * gridDim.y * (sizeof(double) + sizeof(int)));
+    int* max_columns_per_block = (int*)(max_per_block + blockDim.x * blockDim.y * 8);
+    int* max_rows_per_block = (int*)(max_per_block + blockDim.x * blockDim.y * 12);
 
     double max_value = fabs(data[column_id * width + row_id]);
     int max_row = row_id;
@@ -35,7 +35,6 @@ __global__ void locateMaxElement(double* data, int height, int width, bool* used
             max_row = row_id;
             max_column = column_id;
         }
-
         row_id += blockDim.x;
         column_id += blockDim.y;
     }
@@ -59,13 +58,14 @@ __global__ void locateMaxElement(double* data, int height, int width, bool* used
     if (t_in_b == 0) {
         max_rows[b_in_g] = max_rows_per_block[0];
         max_columns[b_in_g] = max_columns_per_block[0];
-        max_values[b_in_g] = /*max_values_per_block[0];*/
+        max_values[b_in_g] = /*max_values_per_block[0];*/ 
             data[max_columns[b_in_g] * width + max_rows[b_in_g]]; // return without abs
     }
 }
 
 void parallelGauss(Matrix& matrix) {
-    dim3 blocks(matrix.getWidth() / 16, matrix.getHeight() / 16);
+    //matrix.getWidth() / 16, matrix.getHeight() / 16
+    dim3 blocks(64, 64);
     dim3 threads(16, 16);
     const int blocks_amount = blocks.x * blocks.y;
     const int threads_amount = threads.x * threads.y;
@@ -104,8 +104,7 @@ void parallelGauss(Matrix& matrix) {
     const int max_values_rows_columns_array_size = threads_amount * (sizeof(double) + 2 * sizeof(int));
 
     while (iteration < std::min(matrix.getHeight(), matrix.getWidth()) - 1) {
-        locateMaxElement<<<blocks, threads, max_values_rows_columns_array_size>>>(dev_matrix, matrix.getHeight(), matrix.getWidth(), dev_used_columns, dev_used_rows, dev_max_values, dev_max_rows, dev_max_columns);
-        cudaError_t error = cudaGetLastError();
+        locateMaxElement<<<blocks, threads>>>(dev_matrix, matrix.getHeight(), matrix.getWidth(), dev_used_columns, dev_used_rows, dev_max_values, dev_max_rows, dev_max_columns);
         HANDLE_ERROR(cudaMemcpy(max_values, dev_max_values, blocks_amount * sizeof(double), cudaMemcpyDeviceToHost));
         HANDLE_ERROR(cudaMemcpy(max_rows, dev_max_rows, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost));
         HANDLE_ERROR(cudaMemcpy(max_columns, dev_max_columns, blocks_amount * sizeof(int), cudaMemcpyDeviceToHost));
