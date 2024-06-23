@@ -5,6 +5,7 @@
 #endif
 
 #include <cmath>
+#include <set>
 
 class SimpleGauss
 {
@@ -22,5 +23,10 @@ public:
 		ROWS(copy.ROWS), COLUMNS(copy.COLUMNS), matrix(copy.matrix) {}
 
 	void toRowEchelonForm();
+
+	void byMaxLeadColumn();
+
+private:
+	double findLargestElement(int& resultColumn, int& resultRow, const std::set<int>& usedColumns, const std::set<int>& usedRows);
 };
 

@@ -20,6 +20,10 @@ void SimpleGauss::toRowEchelonForm()
 			if (pivotRow != iMax) {
 				matrix.swapRows(pivotRow, iMax);
 			}
+			//double pivotCoeff = 1 / matrix[pivotRow][pivotColumn];
+			//for (int j = pivotColumn; j < COLUMNS; ++j) {
+			//	matrix[pivotRow][j] *= pivotCoeff;
+			//}
 			for (int i = pivotRow + 1; i < ROWS; ++i) {
 				double coeff = matrix[i][pivotColumn] / matrix[pivotRow][pivotColumn];
 				matrix[i][pivotColumn] = 0;
@@ -31,4 +35,56 @@ void SimpleGauss::toRowEchelonForm()
 			pivotRow++;
 		}
 	}
+}
+
+void SimpleGauss::byMaxLeadColumn()
+{
+	std::set<int>* usedColumns = new std::set<int>();
+	std::set<int>* usedRows = new std::set<int>();
+	int pivotColumn = -1;
+	int pivotRow = -1;
+	while (usedColumns->size() + 1 != COLUMNS) {
+		double maxElement = findLargestElement(pivotColumn, pivotRow, *usedColumns, *usedRows);
+		if (maxElement != 0) {
+			for (int i = 0; i < ROWS; ++i) {
+				if (usedRows->find(i) == usedRows->end() && i != pivotRow) {
+					double f = matrix[i][pivotColumn] / maxElement;
+					matrix[i][pivotColumn] = 0;
+					for (int j = 0; j < COLUMNS; ++j) {
+						if (usedColumns->find(j) == usedColumns->end() && j != pivotColumn) {
+							matrix[i][j] -= f * matrix[pivotRow][j];
+						}
+					}
+				}
+			}
+		}
+		std::cout << "\n-(" << pivotRow << "," << pivotColumn << " ) = " << maxElement << " -----\n";
+		std::cout << matrix << std::endl;
+
+		usedRows->insert(pivotRow);
+		usedColumns->insert(pivotColumn);
+	}
+}
+
+double SimpleGauss::findLargestElement(int& resultColumn, int& resultRow, const std::set<int>& usedColumns, const std::set<int>& usedRows)
+{
+	double maxValue = matrix[0][0];
+	int iMax = 0;
+	int jMax = 0;
+	for (int i = 0; i < ROWS; ++i) {
+		if (usedRows.find(i) == usedRows.end()) {
+			for (int j = 0; j < COLUMNS; ++j) {
+				if (usedColumns.find(j) == usedColumns.end()) {
+					if (std::abs(matrix[i][j]) > std::abs(maxValue)) {
+						maxValue = matrix[i][j];
+						iMax = i;
+						jMax = j;
+					}
+				}
+			}
+		}
+	}
+	resultRow = iMax;
+	resultColumn = jMax;
+	return maxValue;
 }

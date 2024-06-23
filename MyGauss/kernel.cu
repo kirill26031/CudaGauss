@@ -11,11 +11,11 @@
 
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
-__global__ void addKernel(int *c, const int *a, const int *b)
-{
-    int i = threadIdx.x;
-    c[i] = a[i] + b[i];
-}
+//__global__ void addKernel(int *c, const int *a, const int *b)
+//{
+//    int i = threadIdx.x;
+//    c[i] = a[i] + b[i];
+//}
 
 int main()
 {
@@ -48,52 +48,52 @@ int main()
 
     std::cout << "\n\n";
 
-    Matrix* storedMatrix = readFromFile("example.txt");
+    Matrix* storedMatrix = readFromFile("matrices/4x4.txt");
     std::cout << *storedMatrix;
     std::cout << "\n\n";
     SimpleGauss sg(*storedMatrix);
-    sg.toRowEchelonForm();
-    std::cout << *storedMatrix;
+    sg.byMaxLeadColumn();
+    //std::cout << *storedMatrix;
 
 
     return 0;
 }
 
  // Helper function for using CUDA to add vectors in parallel.
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
-{
-    int *dev_a = 0;
-    int *dev_b = 0;
-    int *dev_c = 0;
-    cudaError_t cudaStatus;
-
-    // Choose which GPU to run on, change this on a multi-GPU system.
-    HANDLE_ERROR(cudaSetDevice(0));
-
-    // Allocate GPU buffers for three vectors (two input, one output)    .
-    cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
-
-    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
-
-    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
-
-    // Copy input vectors from host memory to GPU buffers.
-    cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
-
-    cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
-
-    // Launch a kernel on the GPU with one thread for each element.
-    addKernel<<<1, size>>>(dev_c, dev_a, dev_b);
-
-    // Check for any errors launching the kernel
-    cudaStatus = cudaGetLastError();
-    
-    // cudaDeviceSynchronize waits for the kernel to finish, and returns
-    // any errors encountered during the launch.
-    cudaStatus = cudaDeviceSynchronize();
-
-    // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
-    
-    return cudaStatus;
-}
+//cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
+//{
+//    int *dev_a = 0;
+//    int *dev_b = 0;
+//    int *dev_c = 0;
+//    cudaError_t cudaStatus;
+//
+//    // Choose which GPU to run on, change this on a multi-GPU system.
+//    HANDLE_ERROR(cudaSetDevice(0));
+//
+//    // Allocate GPU buffers for three vectors (two input, one output)    .
+//    cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
+//
+//    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
+//
+//    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
+//
+//    // Copy input vectors from host memory to GPU buffers.
+//    cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
+//
+//    cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
+//
+//    // Launch a kernel on the GPU with one thread for each element.
+//    addKernel<<<1, size>>>(dev_c, dev_a, dev_b);
+//
+//    // Check for any errors launching the kernel
+//    cudaStatus = cudaGetLastError();
+//    
+//    // cudaDeviceSynchronize waits for the kernel to finish, and returns
+//    // any errors encountered during the launch.
+//    cudaStatus = cudaDeviceSynchronize();
+//
+//    // Copy output vector from GPU buffer to host memory.
+//    cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
+//    
+//    return cudaStatus;
+//}
