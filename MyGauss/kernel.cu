@@ -91,26 +91,26 @@ __global__ void changeCoeffs(double* data, int height, int width, int pivot_row,
     int b_in_g = gridDim.x * blockIdx.y + blockIdx.x;
     int t_in_b = blockDim.x * threadIdx.y + threadIdx.x;
 
-    extern __shared__ double pivot_column_and_row[4096];
+    /*extern __shared__ double pivot_column_and_row[4096];
     double* shared_pivot_column = pivot_column_and_row;
-    double* shared_pivot_row = pivot_column_and_row + height;
+    double* shared_pivot_row = pivot_column_and_row + height;*/
 
-    // Copy pivot row, column to shared memory
-    for (int i = t_in_b; i < height; i += blockDim.x * blockDim.y) {
-        shared_pivot_column[i] = pivot_column_data[i];
-    }
-    for (int j = t_in_b; j < width; j += blockDim.x * blockDim.y) {
-        shared_pivot_row[j] = pivot_row_data[j];
-    }
+    //// Copy pivot row, column to shared memory
+    //for (int i = t_in_b; i < height; i += blockDim.x * blockDim.y) {
+    //    shared_pivot_column[i] = pivot_column_data[i];
+    //}
+    //for (int j = t_in_b; j < width; j += blockDim.x * blockDim.y) {
+    //    shared_pivot_row[j] = pivot_row_data[j];
+    //}
     __syncthreads();
 
     // Update coefficients
     for (int i = row_id; i < height; i += blockDim.y * gridDim.y) {
         for (int j = column_id; j < width; j += blockDim.x * gridDim.x) {
             if (!used_columns[j] && !used_rows[i]) {
-                double f = shared_pivot_column[i] / pivot_value;
+                double f = pivot_column_data[i] / pivot_value;
                 //data[i * width + j] += 1; // for testing purposes
-                data[i * width + j] -= f * shared_pivot_row[j];
+                data[i * width + j] -= f * pivot_row_data[j];
             }
             if (j == pivot_column && i != pivot_row && !used_rows[i]) {
                 data[i * width + j] = 0;
@@ -248,7 +248,7 @@ int main()
     output << huge;
     output.close();*/
 
-    Matrix matrix = *readFromFile("matrices/2048x2048.txt");
+    Matrix matrix = *readFromFile("matrices/7kx7k.txt");
 
     //SimpleGauss sg(*storedMatrix);
     //sg.byMaxLeadColumn();     
@@ -258,7 +258,7 @@ int main()
 
     parallelGauss(matrix);
     
-    output.open("matrices/2048x2048-parallel.txt");
+    output.open("matrices/7kx7k-parallel.txt");
     output << matrix;
     output.close();
 
