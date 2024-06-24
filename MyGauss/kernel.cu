@@ -149,6 +149,11 @@ void parallelGauss(Matrix& matrix) {
     double* dev_pivot_row_data = nullptr;
     double* dev_pivot_column_data = nullptr;
 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+
     HANDLE_ERROR(cudaSetDevice(0));
 
     HANDLE_ERROR(cudaMalloc((void**)&dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double)));
@@ -192,7 +197,7 @@ void parallelGauss(Matrix& matrix) {
             break;
         }
 
-        std::cout << "\nPivot:" << pivot_value << ", " << pivot_column << " , " << pivot_row << "\n";
+        //std::cout << "\nPivot:" << pivot_value << ", " << pivot_column << " , " << pivot_row << "\n";
 
         storePivotSeparately<<<blocks, threads>>>(dev_matrix, matrix.getHeight(), matrix.getWidth(), pivot_row, pivot_column,
             dev_pivot_row_data, dev_pivot_column_data);
@@ -213,14 +218,36 @@ void parallelGauss(Matrix& matrix) {
         output.close();*/
     }
     HANDLE_ERROR(cudaMemcpy(matrix[0], dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double), cudaMemcpyDeviceToHost));
+
+    // cuda free
+    HANDLE_ERROR(cudaFree(dev_matrix));
+    HANDLE_ERROR(cudaFree(dev_used_columns));
+    HANDLE_ERROR(cudaFree(dev_used_rows));
+    HANDLE_ERROR(cudaFree(dev_pivot_column_data));
+    HANDLE_ERROR(cudaFree(dev_pivot_row_data));
+    HANDLE_ERROR(cudaFree(dev_max_values));
+    HANDLE_ERROR(cudaFree(dev_max_rows));
+    HANDLE_ERROR(cudaFree(dev_max_columns));
+
+    cudaEventRecord(stop);
+    float elapsed_time = 0;
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed_time, start, stop);
+    std::cout << "\nElapsed time: " << elapsed_time;
+
     cudaDeviceReset();
 }
 
 
 int main()
 {
+    std::ofstream output;
+    //Matrix huge(std::pow(2, 13), std::pow(2, 13), true);d 
+    //output.open("matrices/7kx7k.txt");
+    //output << huge;
+    //output.close();
 
-    Matrix* storedMatrix = readFromFile("matrices/1024x1024.txt");
+    Matrix matrix = *readFromFile("matrices/7kx7k.txt");
 
     //SimpleGauss sg(*storedMatrix);
     //sg.byMaxLeadColumn();     
@@ -228,10 +255,10 @@ int main()
     //Matrix zeros(1024, 1024);
     //parallelGauss(zeros);
 
-    parallelGauss(*storedMatrix);
-    std::ofstream output;
-    output.open("matrices/1024x1024-parallel.txt");
-    output << *storedMatrix;
+    parallelGauss(matrix);
+    
+    output.open("matrices/7kx7k-parallel.txt");
+    output << matrix;
     output.close();
 
     return 0;
