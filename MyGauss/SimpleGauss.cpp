@@ -67,9 +67,9 @@ void SimpleGauss::byMaxLeadColumn()
 
 double SimpleGauss::findLargestElement(int& resultColumn, int& resultRow, const std::set<int>& usedColumns, const std::set<int>& usedRows)
 {
-	double maxValue = matrix[0][0];
-	int iMax = 0;
-	int jMax = 0;
+	double maxValue = 0;
+	int iMax = -1;
+	int jMax = -1;
 	for (int i = 0; i < ROWS; ++i) {
 		if (usedRows.find(i) == usedRows.end()) {
 			for (int j = 0; j < COLUMNS; ++j) {

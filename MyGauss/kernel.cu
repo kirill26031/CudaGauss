@@ -29,17 +29,17 @@ __global__ void locateMaxElement(double* data, int height, int width, bool* used
     int max_row = -1;
     int max_column = -1;
     double temp;
-    while (row_id < height && column_id < width) {
-        if (!used_columns[column_id] && !used_rows[row_id]) {
-            temp = fabs(data[row_id * width + column_id]);
-            if (temp > max_value) {
-                max_value = temp;
-                max_row = row_id;
-                max_column = column_id;
+    for (int i = row_id; i < height; i += blockDim.y * gridDim.y) {
+        for (int j = column_id; j < width; j += blockDim.x * gridDim.x) {
+            if (!used_columns[j] && !used_rows[i]) {
+                temp = fabs(data[i * width + j]);
+                if (temp > max_value) {
+                    max_value = temp;
+                    max_row = i;
+                    max_column = j;
+                }
             }
         }
-        row_id += blockDim.y;
-        column_id += blockDim.x;
     }
     max_values_per_block[t_in_b] = max_value;
     max_rows_per_block[t_in_b] = max_row;
@@ -72,16 +72,15 @@ __global__ void storePivotSeparately(double* data, int height, int width, int pi
     int row_id = blockDim.y * blockIdx.y + threadIdx.y;
     int column_id = blockDim.x * blockIdx.x + threadIdx.x;
 
-    while (row_id < height && column_id < width) {
-        if (row_id == pivot_row) {
-            pivot_row_data[column_id] = data[row_id * width + column_id];
+    for (int i = row_id; i < height; i += blockDim.y * gridDim.y) {
+        for (int j = column_id; j < width; j += blockDim.x * gridDim.x) {
+            if (i == pivot_row) {
+                pivot_row_data[j] = data[i * width + j];
+            }
+            if (j == pivot_column) {
+                pivot_column_data[i] = data[i * width + j];
+            }
         }
-        if (column_id == pivot_column) {
-            pivot_column_data[row_id] = data[row_id * width + column_id];
-        }
-
-        row_id += blockDim.y;
-        column_id += blockDim.x;
     }
 }
 
@@ -106,24 +105,26 @@ __global__ void changeCoeffs(double* data, int height, int width, int pivot_row,
     __syncthreads();
 
     // Update coefficients
-    while (row_id < width && column_id < height) {
-        if (!used_columns[column_id] && !used_rows[row_id]) {
-            double f = pivot_column_data[row_id] / pivot_value;
-            data[row_id * width + column_id] -= f * pivot_row_data[column_id];
+    for (int i = row_id; i < height; i += blockDim.y * gridDim.y) {
+        for (int j = column_id; j < width; j += blockDim.x * gridDim.x) {
+            if (!used_columns[j] && !used_rows[i]) {
+                double f = shared_pivot_column[i] / pivot_value;
+                //data[i * width + j] += 1; // for testing purposes
+                data[i * width + j] -= f * shared_pivot_row[j];
+            }
+            if (j == pivot_column && i != pivot_row && !used_rows[i]) {
+                data[i * width + j] = 0;
+            }
         }
-        if (column_id == pivot_column && row_id != pivot_row && !used_rows[row_id]) {
-            data[row_id * width + column_id] = 0;
-        }
-        row_id += blockDim.x;
-        column_id += blockDim.y;
     }
 }
 
 void parallelGauss(Matrix& matrix) {
-    //matrix.getWidth() / 16, matrix.getHeight() / 16
+    const int blocksAmountInXAxis = std::min(std::max(16, matrix.getWidth() / 16), 512);
+    const int blocksAmountInYAxis = std::min(std::max(16, matrix.getHeight() / 16), 512);
     //std::cout << matrix;
 
-    dim3 blocks(64, 64);
+    dim3 blocks(blocksAmountInXAxis, blocksAmountInYAxis);
     dim3 threads(16, 16);
     const int blocks_amount = blocks.x * blocks.y;
     const int threads_amount = threads.x * threads.y;
@@ -165,7 +166,7 @@ void parallelGauss(Matrix& matrix) {
 
     const int max_values_rows_columns_array_size = threads_amount * (sizeof(double) + 2 * sizeof(int));
 
-    while (iteration < std::min(matrix.getHeight(), matrix.getWidth()) - 1 && iteration < 2) {
+    while (iteration < std::min(matrix.getHeight(), matrix.getWidth()) - 1) {
         locateMaxElement<<<blocks, threads>>>(dev_matrix, matrix.getHeight(), matrix.getWidth(), dev_used_columns, dev_used_rows, dev_max_values, dev_max_rows, dev_max_columns);
         cudaError_t error = cudaGetLastError();
         HANDLE_ERROR(cudaMemcpy(max_values, dev_max_values, blocks_amount * sizeof(double), cudaMemcpyDeviceToHost));
@@ -203,10 +204,12 @@ void parallelGauss(Matrix& matrix) {
             dev_pivot_row_data, dev_pivot_column_data, dev_used_rows, dev_used_columns, pivot_value);
         cudaDeviceSynchronize();
 
-        /*HANDLE_ERROR(cudaMemcpy(matrix[0], dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double), cudaMemcpyDeviceToHost));
+        /*Matrix temp(matrix.getHeight(), matrix.getWidth());
+        HANDLE_ERROR(cudaMemcpy(temp[0], dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double), cudaMemcpyDeviceToHost));
+
         std::ofstream output;
-        output.open(std::string("matrices/1024x1024-parallel-") + std::to_string(iteration) + std::string(".txt"));
-        output << matrix;
+        output.open(std::string("matrices/1024x1024-temp-") + std::to_string(iteration) + std::string(".txt"));
+        output << temp;
         output.close();*/
     }
     HANDLE_ERROR(cudaMemcpy(matrix[0], dev_matrix, matrix.getHeight() * matrix.getWidth() * sizeof(double), cudaMemcpyDeviceToHost));
@@ -220,7 +223,10 @@ int main()
     Matrix* storedMatrix = readFromFile("matrices/1024x1024.txt");
 
     //SimpleGauss sg(*storedMatrix);
-    //sg.byMaxLeadColumn(); 
+    //sg.byMaxLeadColumn();     
+
+    //Matrix zeros(1024, 1024);
+    //parallelGauss(zeros);
 
     parallelGauss(*storedMatrix);
     std::ofstream output;
