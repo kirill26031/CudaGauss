@@ -91,7 +91,7 @@ __global__ void changeCoeffs(double* data, int height, int width, int pivot_row,
     int b_in_g = gridDim.x * blockIdx.y + blockIdx.x;
     int t_in_b = blockDim.x * threadIdx.y + threadIdx.x;
 
-    extern __shared__ double pivot_column_and_row[2048];
+    extern __shared__ double pivot_column_and_row[4096];
     double* shared_pivot_column = pivot_column_and_row;
     double* shared_pivot_row = pivot_column_and_row + height;
 
@@ -242,12 +242,13 @@ void parallelGauss(Matrix& matrix) {
 int main()
 {
     std::ofstream output;
-    //Matrix huge(std::pow(2, 13), std::pow(2, 13), true);d 
-    //output.open("matrices/7kx7k.txt");
-    //output << huge;
-    //output.close();
+    /*
+    Matrix huge(std::pow(2, 11), std::pow(2, 11), true);
+    output.open("matrices/2048x2048.txt");
+    output << huge;
+    output.close();*/
 
-    Matrix matrix = *readFromFile("matrices/7kx7k.txt");
+    Matrix matrix = *readFromFile("matrices/2048x2048.txt");
 
     //SimpleGauss sg(*storedMatrix);
     //sg.byMaxLeadColumn();     
@@ -257,7 +258,7 @@ int main()
 
     parallelGauss(matrix);
     
-    output.open("matrices/7kx7k-parallel.txt");
+    output.open("matrices/2048x2048-parallel.txt");
     output << matrix;
     output.close();
 
